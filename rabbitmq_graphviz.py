@@ -1,3 +1,6 @@
+#! /usr/bin/python 
+
+
 import argparse
 import json
 import sys
@@ -9,6 +12,25 @@ def build_definitions(definitions, vhost, render_producers, render_consumers):
 
     def is_same_vhost(entity_dict):
         return entity_dict['vhost'] == vhost
+
+    # If there's a queue but no binding, add a default binding 
+    #       (to the "" exchange with the queue name as the routing key)
+    # That's the normal way a message would get into that queue.
+    for queue in definitions['queues']:
+        if not [i for i in  definitions['bindings'] if i['destination'] == queue['name'] ]:
+            definitions['bindings'].append({'vhost': queue['vhost'], 'destination': queue['name'],
+                'routing_key': queue['name'], 'source': 'NULL', 
+                'arguments': {}, 'destination_type': 'queue'} 
+            )
+
+    # if there is now a binding but no exchange in that vhost that matches, create the exchange
+    for binding in definitions['bindings']:
+        if not [ e for e in definitions['exchanges']
+                    if e['name'] == binding['source'] and e['vhost'] == binding['vhost'] ]:
+            definitions['exchanges'].append({'name':binding['source'], 'durable' : True,
+                'vhost':binding['vhost'],'internal':True, 'arguments':{},
+                'type':'direct','auto_delete':False}
+            )
 
     return ''.join([
         'digraph {\n',
@@ -77,6 +99,6 @@ if __name__ == '__main__':
 
     definitions = json.load(args.definitions)
     args.definitions.close()
-        
+
     args.outfile.write(build_definitions(definitions, args.vhost, args.producers, args.consumers))
     args.outfile.close()
